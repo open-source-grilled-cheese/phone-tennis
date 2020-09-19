@@ -1,2 +1,2 @@
 include ':app'
-rootProject.name = "Tennis"
+rootProject.name = "wifitennis2"
