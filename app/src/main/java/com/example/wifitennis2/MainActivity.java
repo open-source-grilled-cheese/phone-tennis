@@ -8,6 +8,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -20,19 +21,28 @@ import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pDeviceList;
 import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.text.PrecomputedText;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.w3c.dom.Text;
+
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.StringWriter;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -119,11 +129,18 @@ public class MainActivity extends AppCompatActivity {
     }
 }
 
+
+
 class WifiReceiver extends BroadcastReceiver {
 
     public static final String TAG = "WifiReceiver";
     private List<WifiP2pDevice> peers = new ArrayList<>();
+
+    private WifiP2pManager manager;
+    private WifiP2pManager.Channel channel;
+    private MainActivity activity;
     // private ConnectivityManager.NetworkCallback networkCallback =
+
     private WifiP2pManager.ConnectionInfoListener connectionInfoListener = new WifiP2pManager.ConnectionInfoListener() {
         @Override
         public void onConnectionInfoAvailable(WifiP2pInfo info) {
@@ -140,37 +157,21 @@ class WifiReceiver extends BroadcastReceiver {
                 // incoming connections.
                 Log.d(TAG, "we are group owner");
                 t.setText("Player 1");
-                try {
-                    activity.serverSocket= new ServerSocket(activity.portNumber);
-                    activity.clientSocket = activity.serverSocket.accept();
-                    DataOutputStream dataStream = new DataOutputStream(activity.clientSocket.getOutputStream());
-                    dataStream.writeUTF("message from server");
-                    dataStream.flush();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                Log.d(TAG, "Running on port: " + activity.serverSocket.getLocalPort());
+                new PlayerOneTask(activity, activity.findViewById(R.id.t2)).execute();
             } else if (info.groupFormed) {
                 // The other device acts as the client. In this case,
                 // you'll want to create a client thread that connects to the group
                 // owner.
                 Log.d(TAG, "we are client");
                 t.setText("Player 2");
-                activity.clientSocket = new Socket();
-                try {
-                    activity.clientSocket.bind(null);
-                    activity.clientSocket.connect(new InetSocketAddress(info.groupOwnerAddress, activity.portNumber));
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(activity.clientSocket.getInputStream()));
-                    Log.d(TAG, "server message: " + reader.readLine());
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+                new PlayerTwoTask(activity, activity.findViewById(R.id.t2), info.groupOwnerAddress).execute();
 
             } else {
                 Log.d(TAG, "group not formed");
                 t.setText("Failed to connect");
             }
         }
+
     };
     private WifiP2pManager.PeerListListener peerListListener = new WifiP2pManager.PeerListListener() {
         @Override
@@ -199,10 +200,6 @@ class WifiReceiver extends BroadcastReceiver {
             }
         }
     };
-
-    private WifiP2pManager manager;
-    private WifiP2pManager.Channel channel;
-    private MainActivity activity;
 
     public WifiReceiver(WifiP2pManager manager, WifiP2pManager.Channel channel,
                         MainActivity activity) {
@@ -294,6 +291,100 @@ class WifiReceiver extends BroadcastReceiver {
             //fragment.updateThisDevice((WifiP2pDevice) intent.getParcelableExtra(
             //        WifiP2pManager.EXTRA_WIFI_P2P_DEVICE));
 
+        }
+    }
+
+    public static class PlayerOneTask extends AsyncTask<Void, Void, String> {
+        private MainActivity activity;
+        private Context context;
+        private View statusText;
+
+        public PlayerOneTask(Context context, View statusText ) {
+            this.context = context;
+            this.statusText = statusText;
+        }
+
+        @Override
+        protected String doInBackground(Void... params) {
+            try {
+                // write data "served"
+                // serversocket.accept()
+
+                /**
+                 * Create a server socket and wait for client connections. This
+                 * call blocks until a connection is accepted from a client
+                 */
+                ServerSocket serverSocket = new ServerSocket(5000);
+                Socket client = serverSocket.accept();
+
+                /**
+                 * If this code is reached, a client has connected and transferred data
+                 * Save the input stream from the client as a JPEG file
+                 */
+                InputStream inputstream = client.getInputStream();
+                BufferedReader r = new BufferedReader(new InputStreamReader(inputstream));
+                Log.d(TAG, "from client: " + r.readLine());
+                serverSocket.close();
+                return null;
+            } catch (IOException e) {
+                Log.e(TAG, e.getMessage());
+                return null;
+            }
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            if (result != null) {
+                Log.d(TAG, "accepted input: " + result);
+            }
+        }
+    }
+    public static class PlayerTwoTask extends AsyncTask<Void, Void, String> {
+        private MainActivity activity;
+        private View statusText;
+        private InetAddress groupOwnerAddress;
+
+        public PlayerTwoTask(MainActivity activity, View statusText, InetAddress groupOwnerAddress) {
+            this.activity = activity;
+            this.statusText = statusText;
+            this.groupOwnerAddress = groupOwnerAddress;
+        }
+
+        @Override
+        protected String doInBackground(Void... params) {
+            // wait for 'serve' from player 1
+            // check for hit
+            // send "miss" or "hit"
+            while(true) {
+                Socket clientSocket = new Socket();
+                try {
+                    clientSocket.bind(null);
+                    clientSocket.connect(new InetSocketAddress(groupOwnerAddress, 5000));
+                    OutputStream outputStream = clientSocket.getOutputStream();
+                    outputStream.write("data to send to server".getBytes(StandardCharsets.UTF_8));
+                    outputStream.close();
+                } catch (IOException e) {
+                    //catch logic
+                    Log.e(TAG, e.toString());
+                }
+                finally {
+                    if (activity.clientSocket != null) {
+                        if (activity.clientSocket.isConnected()) {
+                            try {
+                                activity.clientSocket.close();
+                            } catch (IOException e) {
+                                Log.e(TAG, e.toString());
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            Log.d(TAG, "finished executing client");
         }
     }
 }
