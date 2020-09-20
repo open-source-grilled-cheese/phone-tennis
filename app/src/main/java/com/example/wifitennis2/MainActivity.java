@@ -13,7 +13,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorManager;
 import android.icu.util.Output;
+import android.media.MediaPlayer;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.WpsInfo;
@@ -24,9 +27,11 @@ import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Vibrator;
 import android.text.PrecomputedText;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -48,6 +53,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+
 public class MainActivity extends AppCompatActivity {
 
     public static final String TAG = "Tennis";
@@ -58,6 +68,14 @@ public class MainActivity extends AppCompatActivity {
     WifiP2pManager manager;
     WifiReceiver receiver;
 
+    private static final int POINT_TIME = 2000;
+    private static final int WINDOW = 300;
+    private static final int SHAKE_THRESHOLD = 1000;
+    float lastUpdate = 0;
+
+    private SensorManager sensorManager;
+    Sensor accelerometer;
+
     public int portNumber = 5000;
     public ServerSocket serverSocket = null;
     public Socket clientSocket = null;
@@ -67,6 +85,57 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public boolean checkForHit() {
+
+        boolean hit = false;
+
+        float startTime = System.currentTimeMillis();
+        try {
+            while (true) {
+                Thread.sleep(POINT_TIME - WINDOW); //sleep until window starts
+                break;
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        //now check every increment of time
+        try {
+            while (true) {
+                float x = Swing.x;
+                float y = Swing.y;
+                float z = Swing.z;
+                float last_x = Swing.last_x;
+                float last_y = Swing.last_y;
+                float last_z = Swing.last_z;
+
+                float curTime = System.currentTimeMillis();
+
+                if ((curTime - lastUpdate) > POINT_TIME - WINDOW && (curTime - lastUpdate) < POINT_TIME + WINDOW){ // sampling rate
+                    float diffTime = (curTime - lastUpdate);
+                    lastUpdate = curTime;
+
+                    float speed = Math.abs(x+y+z- last_x - last_y - last_z)/ diffTime * 10000;
+                    //if they are swinging
+                    if (speed > SHAKE_THRESHOLD){
+                        //swinging.setText("SWINGING");
+                        hit = true;
+                        return true;
+                    }
+
+                }
+                //if they don't hit the ball in that time period
+                else if((curTime - lastUpdate) > POINT_TIME + WINDOW && !hit){
+                    hit = false;
+                    return false;
+                }
+
+                Thread.sleep(10); //sleep until window starts
+
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         return true;
     }
 
@@ -406,3 +475,94 @@ class WifiReceiver extends BroadcastReceiver {
         }
     }
 }
+
+class Swing extends AppCompatActivity implements SensorEventListener {
+
+    private static final String TAG = "Swing";
+
+    private Button toss;
+
+    private long lastUpdate = 0;
+    public static float last_x, last_y, last_z;
+    private static final int SHAKE_THRESHOLD = 1000;
+    private static final int VIBRATION_TIME = 200;
+    private static final int POLLING_TIME = 50;
+    private static final int SERVE_TIME = 2000;
+    private static final int POINT_TIME = 2000;
+    private static final int SWING_WINDOW = 300;
+    //private float swingElapsedTime = 0;
+    //private float swingStartTime;
+    private float pointStartTime;
+    private boolean checkServing;
+    private boolean prevSwing;
+    private boolean hit;
+
+    private SensorManager sensorManager;
+    Sensor accelerometer;
+
+    TextView xValue, yValue, zValue, swinging;
+
+    Vibrator vibrator;
+
+    MediaPlayer serve;
+
+    //public boolean isHitting = false;
+
+    public static float x, y, z;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+       /* setContentView(R.layout.activity_swing);
+
+        //toss ball to serve
+        toss = (Button) findViewById(R.id.toss_ball);
+        toss.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                serve.start();
+                //startPoint();
+                //vibe.vibrate(1000);
+                //vibe.vibrate(VibrationEffect.createOneShot(1000, 255));
+            }
+        }); */
+
+
+        //xValue = (TextView) findViewById(R.id.xValue);
+        //yValue = (TextView) findViewById(R.id.yValue);
+        //zValue = (TextView) findViewById(R.id.zValue);
+        //swinging = (TextView) findViewById(R.id.swinging);
+
+        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        //serve = MediaPlayer.create(this, R.raw.coin_collect);
+
+        Log.d(TAG, "onCreate: Initializing Sensor Services");
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        sensorManager.registerListener(Swing.this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+        Log.d(TAG, "onCreate: Registered accelerometer listener");
+        //swinging.setText("Not swinging");
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int i) {
+
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent sensorEvent) {
+        Log.d(TAG, "onSensorChanged: X: " + sensorEvent.values[0] + " Y: " + sensorEvent.values[1] + " Z: " + sensorEvent.values[2]);
+        //set previous values before grabbing the new ones
+        last_x = x;
+        last_y = y;
+        last_z = z;
+
+        x = sensorEvent.values[0];
+        y = sensorEvent.values[1];
+        z = sensorEvent.values[2];
+
+
+    }
+}
+
