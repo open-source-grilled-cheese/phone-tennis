@@ -58,6 +58,9 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+
 public class MainActivity extends AppCompatActivity {
 
     public static final String TAG = "Tennis";
@@ -85,8 +88,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public boolean checkForHit() {
+        MediaPlayer hitSound;
 
         boolean hit = false;
+        float TestMultiplier = 0.5f;
+
+        Vibrator vibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        hitSound = MediaPlayer.create(this, R.raw.coin_collect);
+
+        long[] vibratePattern = new long[]{(long)(500.0f*TestMultiplier), (long)(500.0f*TestMultiplier), (long)(500.0f*TestMultiplier),(long)(500.0f*TestMultiplier),(long)(500.0f*TestMultiplier),(long)(300.0f*TestMultiplier), (long)(300.0f*TestMultiplier), (long)(300.0f*TestMultiplier), (long)(300.0f*TestMultiplier), (long)(300.0f*TestMultiplier), (long)(300.0f*TestMultiplier)};
+        //for(long  Number : vibratePattern) {
+        //Number = (long)((float) Number * SpeedMultiplier);
+        //}
+        int[] amplitudes = new int[]{15, 31, 45,45,45,45, 63, 74, 110, 127, 191};
+        vibe.vibrate(VibrationEffect.createWaveform(vibratePattern, amplitudes, -1));
+
+        hitSound.start();
 
         float startTime = System.currentTimeMillis();
         try {
@@ -119,6 +136,7 @@ public class MainActivity extends AppCompatActivity {
                     if (speed > SHAKE_THRESHOLD){
                         //swinging.setText("SWINGING");
                         hit = true;
+                        hitSound.start();
                         return true;
                     }
 
@@ -534,7 +552,7 @@ class Swing extends AppCompatActivity implements SensorEventListener {
         //swinging = (TextView) findViewById(R.id.swinging);
 
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        //serve = MediaPlayer.create(this, R.raw.coin_collect);
+
 
         Log.d(TAG, "onCreate: Initializing Sensor Services");
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
