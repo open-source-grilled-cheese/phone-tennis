@@ -13,6 +13,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.icu.util.Output;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.WpsInfo;
@@ -63,6 +64,10 @@ public class MainActivity extends AppCompatActivity {
 
     public void setIsWifiP2pEnabled(boolean enabled) {
         this.isWifiP2pEnabled = enabled;
+    }
+
+    public boolean checkForHit() {
+        return true;
     }
 
     @Override
@@ -299,8 +304,8 @@ class WifiReceiver extends BroadcastReceiver {
         private Context context;
         private View statusText;
 
-        public PlayerOneTask(Context context, View statusText ) {
-            this.context = context;
+        public PlayerOneTask(MainActivity activity, View statusText ) {
+            this.activity = activity;
             this.statusText = statusText;
         }
 
@@ -309,27 +314,26 @@ class WifiReceiver extends BroadcastReceiver {
             try {
                 // write data "served"
                 // serversocket.accept()
-
-                /**
-                 * Create a server socket and wait for client connections. This
-                 * call blocks until a connection is accepted from a client
-                 */
                 ServerSocket serverSocket = new ServerSocket(5000);
                 Socket client = serverSocket.accept();
-
-                /**
-                 * If this code is reached, a client has connected and transferred data
-                 * Save the input stream from the client as a JPEG file
-                 */
-                InputStream inputstream = client.getInputStream();
-                BufferedReader r = new BufferedReader(new InputStreamReader(inputstream));
-                Log.d(TAG, "from client: " + r.readLine());
-                serverSocket.close();
-                return null;
+                while(true) {
+                    OutputStream outputStream = client.getOutputStream();
+                    if(activity.checkForHit()) {
+                        outputStream.write("hit".getBytes(StandardCharsets.UTF_8));
+                        InputStream inputstream = client.getInputStream();
+                        BufferedReader r = new BufferedReader(new InputStreamReader(inputstream));
+                        Log.d(TAG, "from client: " + r.readLine());
+                    } else {
+                        Log.d(TAG, "finished game");
+                        serverSocket.close();
+                        return null;
+                    }
+                }
             } catch (IOException e) {
                 Log.e(TAG, e.getMessage());
                 return null;
             }
+
         }
 
         @Override
@@ -355,23 +359,38 @@ class WifiReceiver extends BroadcastReceiver {
             // wait for 'serve' from player 1
             // check for hit
             // send "miss" or "hit"
+            Socket clientSocket = new Socket();
+            try {
+                clientSocket.bind(null);
+                clientSocket.connect(new InetSocketAddress(groupOwnerAddress, 5000));
+            } catch (IOException e) {
+                Log.e(TAG, e.toString());
+                return null;
+            }
             while(true) {
-                Socket clientSocket = new Socket();
                 try {
-                    clientSocket.bind(null);
-                    clientSocket.connect(new InetSocketAddress(groupOwnerAddress, 5000));
+                    InputStream inputStream = clientSocket.getInputStream();
+                    BufferedReader r = new BufferedReader(new InputStreamReader(inputStream));
+                    Log.d(TAG, "message from server: " + r.readLine()); // wait for hit signal from server
+                    boolean hit = activity.checkForHit();
                     OutputStream outputStream = clientSocket.getOutputStream();
-                    outputStream.write("data to send to server".getBytes(StandardCharsets.UTF_8));
-                    outputStream.close();
+                    if(hit) {
+                        outputStream.write("hit".getBytes(StandardCharsets.UTF_8));
+                    } else {
+                        outputStream.write("miss".getBytes(StandardCharsets.UTF_8));
+                        return null;
+                    }
+                    // outputStream.write("data to send to server".getBytes(StandardCharsets.UTF_8));
+                    // outputStream.close();
                 } catch (IOException e) {
                     //catch logic
                     Log.e(TAG, e.toString());
                 }
                 finally {
-                    if (activity.clientSocket != null) {
-                        if (activity.clientSocket.isConnected()) {
+                    if (clientSocket != null) {
+                        if (clientSocket.isConnected()) {
                             try {
-                                activity.clientSocket.close();
+                                clientSocket.close();
                             } catch (IOException e) {
                                 Log.e(TAG, e.toString());
                             }
@@ -379,7 +398,6 @@ class WifiReceiver extends BroadcastReceiver {
                     }
                 }
             }
-            return null;
         }
 
         @Override
